@@ -1,7 +1,7 @@
 from base import *
+import hamming
 import math
 import scdf
-from bit import Bit
 
 # Direct sort from https://eprint.iacr.org/2015/274.pdf
 def direct_sort(X):
@@ -17,7 +17,7 @@ def direct_sort(X):
 
     s = []
     for i in range(N):
-        s.append(hamming_weight(M[i]))
+        s.append(hamming.hamming_weight(M[i])[:-1])
     
     Y = [0] * N
     for i in range(N):
@@ -48,7 +48,7 @@ def direct_sort_p(X):
             x.append(fill_slots_with_elem(X[i][j], N))
         M.append(lt(x, a))
 
-    s = hamming_weight(M)
+    s = hamming_weight(M)[:-1]
 
     zs = []
     ds = []
@@ -114,6 +114,61 @@ def hamming_weight(v):
         c22 = s21*c11
         s33 = c21 + c22
         result[2] = s33
+    elif len(v) == 16:
+        result = [zero] * 4
+		
+        s1 = v[0] + v[1] + v[2]
+        s2 = v[3] + v[4] + v[5]
+        s3 = v[6] + v[7] + v[8]
+        s4 = v[9] + v[10] + v[11]
+        s5 = v[12] + v[13] + v[14]
+        s6 = v[15]
+		
+        s11 = s1 + s2 + s3
+        s12 = s4 + s5 + s6
+	result[0] = s11 + s12
+		
+	c1 = v[0]*v[1] + v[0]*v[2] + v[1]*v[2]
+        c2 = v[3]*v[4] + v[3]*v[5] + v[4]*v[5]
+        c3 = v[6]*v[7] + v[6]*v[8] + v[7]*v[8]
+	c4 = v[9]*v[10] + v[9]*v[11] + v[10]*v[11]
+	c5 = v[12]*v[13] + v[12]*v[14] + v[13]*v[14]
+	c6 = v[15]
+		
+	c21 = c1 + c2 + c3
+	c22 = c4 + c5
+	s21 = s1*s2 + s1*s3 + s2*s3
+	s22 = s4*s5 + s4*s6 + s5*s6
+	s23 = s1*s4 + s1*s5 + s1*s6
+	s24 = s2*s4 + s2*s5 + s2*s6
+	s25 = s3*s4 + s3*s5 + s3*s6
+	result[1] = c21 + c22 + s21 + s22 + s23 + s24 + s25
+
+
+	c31 = c1*c2 + c1*c3 + c2*c3
+	c32 = c1*c4 + c1*c5 + c4*c5
+	c33 = c2*c4 + c2*c5
+	c34 = c3*c4 + c3*c5
+
+        s31 = s21*s22 + s21*s23 + s22*s23
+        s32 = s21*s24 + s21*s25 + s24*s25
+        s33 = s22*s24 + s22*s25
+        s34 = s23*s24 + s23*s25
+
+        result[2] = (c21 + c22)*(s21 + s22 + s23 + s24 + s24) + c31 + c32 + c33 + c34 + s31 + s32 + s33 + s34
+
+        s35 = (c21 + c22)*(s21 + s22 + s23 + s24 + s24)
+
+        c41 = c31*c32 + c31*c33 + c32*c33
+        c42 = c31*c34 + c32*c34 + c33*c34
+
+        s41 = s31*s32 + s31*s33 + s32*s33
+        s42 = s31*s34 + s32*s34 + s34*s35
+        s43 = s33*s34 + s33*s35 + s32*s35
+
+        result[3] = (c31 + c32 + c33 + c34)*(s31 + s32 + s33 + s34 + s35) + c41 + c42 + s41 + s42 \
+                    + s43
+	
     else:
         raise Exception('Unsupported length in hamming weight algorithm')
         

@@ -1,4 +1,5 @@
 import scdf
+import utils
 import sort
 
 class BinVector:
@@ -19,24 +20,6 @@ class BinVector:
         return BinVector(map(lambda (x, y): (x + y) % 2, zip(self.elems, other.elems)))
 
 
-def to_bin(n, nbits):
-    nbin = [0] * nbits
-    i = 0
-    while i < nbits and n != 0:
-        nbin[i] = n & 1
-        n >>= 1
-        i += 1
-    return nbin
-
-def from_bin(bits):
-    powers_of_2 = 1
-    n = 0
-    for b in bits:
-        n += b * powers_of_2
-        powers_of_2 *= 2
-    return int(n)
-
-
 # number of bits in each element
 nbits = 8
 
@@ -49,7 +32,7 @@ def map_constant(constant):
     return BinVector([constant] * nslots)
 
 def add_num_to_map(name, num, input_map):
-    bin_rep = to_bin(num, nbits)
+    bin_rep = utils.to_bin(num, nbits)
 
     for i in range(nbits):
         vect = [0] * nslots
@@ -71,7 +54,7 @@ def unpack_array(elements):
         for b in element:
             bits.append(b.elems[0])
 
-        array.append(from_bin(bits))
+        array.append(utils.from_bin(bits))
     return array
 
 

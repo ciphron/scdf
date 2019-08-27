@@ -42,10 +42,16 @@ def mux(sel, alt0, alt1):
 
 def half_adder(a, b):
     s = a + b
-    c = a*b
-    return (c, s)
+    c = a * b
+    return (s, c)
 
-def full_adder(a, b, c):
-    s = a + b + c
-    c = a*b + (c * (a + b))
-    return (c, s)
+def full_adder(a, b, c_in):
+	s0 = a + b
+	s = s0 + c_in
+	#c_out = lor(a*b, c_in * s0)
+	t1 = c_in * a
+	t2 = c_in * b
+	t3 = t1 * b
+	t4 = t2 * a
+	c_out = a*b + t1 + t2 + t3 + t4
+	return (s, c_out)

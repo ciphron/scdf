@@ -11,6 +11,10 @@ class Circuit(object):
     def __rshift__(self, num_places):
         return Gate(Gate.SHIFT_RIGHT, self, num_places)
 
+    @property
+    def is_terminal(self):
+        pass
+
 
 class Gate(Circuit):
     ADD = 1
@@ -19,17 +23,47 @@ class Gate(Circuit):
     SHIFT_RIGHT = 4
 
     def __init__(self, gate_type, left, right):
-        self.is_terminal = False
-        self.gate_type = gate_type
-        self.left = left
-        self.right = right
+        self._gate_type = gate_type
+        self._left = left
+        self._right = right
+
+    @property
+    def is_terminal(self):
+        return False
+
+    @property
+    def gate_type(self):
+        return self._gate_type
+
+    @property
+    def left(self):
+        return self._left
+
+    @property
+    def right(self):
+        return self._right
+
+class Terminal(Circuit):
+    def __init__(self, is_constant):
+        self._is_constant = is_constant
+
+    @property
+    def is_terminal(self):
+        return True
+
+    @property
+    def is_constant(self):
+        return self._is_constant
     
 
-class Constant(Circuit):
+class Constant(Terminal):
     def __init__(self, value):
-        self.is_terminal = True
-        self.is_constant = True
-        self.value = value
+        super(Constant, self).__init__(True)
+        self._value = value
+
+    @property
+    def value(self):
+        return self._value
 
     def __mul__(self, other):
         if self.value == 0:
@@ -43,11 +77,14 @@ class Constant(Circuit):
             return other
         return super(Constant, self).__add__(other)
 
-class Input(Circuit):
+class Input(Terminal):
     def __init__(self, name):
-        self.is_terminal = True
-        self.is_constant = False
-        self.name = name
+        super(Input, self).__init__(False)
+        self._name = name
+
+    @property
+    def name(self):
+        return self._name
 
 
 def eval_circuit(circ, input_map, map_constant, eval_map={}):
@@ -112,13 +149,6 @@ def construct_mul_tree(operands):
         in_operands = out_operands
         out_operands = []
     circ = in_operands[0]
-    depth = compute_depth(circ, depths)
-    if not circ.right.is_terminal:
-        r = circ.right.right
-        if r in operands and depth > (compute_depth(r, depths) + 1):
-            circ.right = circ.right.left
-            circ = Gate(Gate.MUL, circ, r)
-            found_operands = []
 
     return circ
 
@@ -136,8 +166,17 @@ def reduce_depth(circ, reduced={}, mulchain=False, operands=[]):
             noperands = len(mul_operands)
             for i in range(noperands):
                 mul_operands[i] = reduce_depth(mul_operands[i],
-                                               reduced)            
-            new_circ = construct_mul_tree(mul_operands)
+                                               reduced)
+		marked = set()
+		mul_operands_new = []
+		for i in range(noperands):
+                    if i not in marked:
+                        mul_operands_new.append(mul_operands[i])
+		    for j in range(i + 1, noperands):
+			if compare_circuits(mul_operands[i], mul_operands[j]):
+                            marked.add(j)
+						
+            new_circ = construct_mul_tree(mul_operands_new)
             if compute_depth(circ) < compute_depth(new_circ):
                 reduced[circ] = circ
                 return circ
@@ -161,6 +200,152 @@ def reduce_depth(circ, reduced={}, mulchain=False, operands=[]):
         
     else:
         reduced[circ] = circ
+    return circ
+
+def expand(circ, exp={}):
+    if circ in exp:
+        return exp[circ]
+
+    if circ.is_terminal:
+        exp[circ] = circ
+        return circ
+
+    if circ.gate_type is not Gate.MUL:
+        exp_circ = Gate(circ.gate_type, expand(circ.left, exp),
+                        expand(circ.right, exp))
+        exp[circ] = exp_circ
+        return exp_circ
+
+    left = expand(circ.left, exp)
+    right = expand(circ.right, exp)
+    exp_circ = insert_mul(left, right)
+    exp[circ] = exp_circ
+    return exp_circ
+
+
+def is_product(circ):
+    return circ.is_terminal or circ.gate_type is Gate.MUL
+
+def insert_mul(multiplier, circ):
+    if is_product(circ):
+        if is_product(multiplier):
+            return Gate(Gate.MUL, multiplier, circ)
+        else:
+            return insert_mul(circ, multiplier)
+    elif not circ.is_terminal and circ.gate_type is Gate.ADD:
+        return Gate(circ.gate_type, insert_mul(multiplier, circ.left),
+                    insert_mul(multiplier, circ.right))
+    return circ
+
+def distribute(circ):
+    if circ.is_terminal:
+        return circ
+
+    if circ.gate_type is not Gate.MUL:
+        return circ
+
+    left = circ.left
+    right = circ.right
+
+    add_gate = None
+    multiplier = None
+    if not left.is_terminal and left.gate_type is Gate.ADD:
+        add_gate = left
+        multiplier = right
+    elif not right.is_terminal and right.gate_type is Gate.ADD:
+        add_gate = right
+        multiplier = left
+    else:
+        return circ
+
+    add_left = Gate(Gate.MUL, multiplier, add_gate.left)
+    add_right = Gate(Gate.MUL, multiplier, add_gate.right)
+
+    return Gate(Gate.ADD, add_left, add_right)
+
+def build_mul_operands(circ):
+    if circ.is_terminal or circ.gate_type != Gate.MUL:
+        return [circ]
+    mul_operands_left = build_mul_operands(circ.left)
+    mul_operands_right = build_mul_operands(circ.right)
+    return mul_operands_left + mul_operands_right
+
+def simplify(circ, simpl={}):
+    if circ in simpl:
+        return simpl[circ]
+
+    if circ.is_terminal:
+        simpl[circ] = circ
+        return circ
+
+    if circ.gate_type is not Gate.ADD:
+        circ_simpl = Gate(circ.gate_type, simplify(circ.left, simpl),
+                          simplify(circ.right, simpl))
+        simpl[circ] = circ_simpl
+        return circ_simpl
+
+    left = simplify(circ.left)
+    right = simplify(circ.right)
+
+    if left.is_terminal or left.gate_type is not Gate.MUL or right.is_terminal \
+       or right.gate_type is not Gate.MUL:
+        circ_simpl = Gate(circ.gate_type, left,
+                          right)
+        simpl[circ] = circ_simpl
+        return circ_simpl
+
+    left_mul_operands = build_mul_operands(left)
+    right_mul_operands = build_mul_operands(right)
+
+    marked = set()
+    new_left_mul_operands = []
+    new_right_mul_operands = []
+    common_operands = []
+
+    for operand in left_mul_operands:
+        matched = False
+        for i in range(len(right_mul_operands)):
+            if compare_circuits(operand, right_mul_operands[i]):
+                marked.add(i)
+                common_operands.append(operand)
+                matched = True
+        if not matched:
+            new_left_mul_operands.append(operand)
+
+    for i in range(len(right_mul_operands)):
+        if i not in marked:
+            new_right_mul_operands.append(right_mul_operands[i])
+
+    if len(new_left_mul_operands) == 0:
+        left = Constant(1)
+    else:
+        left = simplify(construct_mul_tree(new_left_mul_operands), simpl)
+
+    if len(new_right_mul_operands) == 0:
+        right = Constant(1)
+    else:
+        right = simplify(construct_mul_tree(new_right_mul_operands), simpl)
+    common_tree = simplify(construct_mul_tree(common_operands), simpl)
+    add_gate = Gate(Gate.ADD, left, right)
+    mul_gate = Gate(Gate.MUL, add_gate, common_tree)
+    simpl[circ] = mul_gate
+
+    return mul_gate
+
+
+def deduplicate(circ, subcircs=set()):
+    if circ in subcircs:
+        return circ
+
+    for sc in subcircs:
+        if compare_circuits(circ, sc):
+            return sc
+
+    if not circ.is_terminal:
+        circ = Gate(circ.gate_type, deduplicate(circ.left, subcircs),
+                    deduplicate(circ.right, subcircs))
+
+    subcircs.add(circ)
     return circ
 
 def is_shift(circ):
@@ -254,3 +439,4 @@ def vect_input(name, dim):
 
 def array_input(name, n, nbits):
     return [vect_input('%s%d' % (name, i), nbits) for i in range(n)]
+
